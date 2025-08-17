@@ -876,6 +876,7 @@ def atualizar_indicadores():
 janelas = ["[1/3] MUCABRASIL", "[2/3] MUCABRASIL", "[3/3] MUCABRASIL"]
 janela_var = None
 popup_config = None
+popup_itens = None
 
 class ToolTip(object):
     def __init__(self, widget, text):
@@ -924,6 +925,81 @@ def safe_focus(janela):
         return False
 
 
+def abrir_itens_submenu():
+    global popup_itens
+    if popup_itens is not None and popup_itens.winfo_exists():
+        try:
+            popup_itens.lift()
+            return
+        except:
+            popup_itens = None
+
+    popup_itens = ctk.CTkToplevel(root)
+    icon_path = os.path.join(os.path.dirname(__file__), "vkgico.ico")
+    safe_set_icon(popup_itens, icon_path)
+    popup_itens.after(250, lambda: safe_set_icon(popup_itens, icon_path))
+
+    popup_itens.title("Itens")
+    popup_itens.geometry("300x400")
+    popup_itens.resizable(False, True)
+    popup_itens.configure(fg_color="#1A1A1A")
+
+    bg_color = "#1A1A1A"
+    canvas = tk.Canvas(popup_itens, bg=bg_color, highlightthickness=0)
+    scrollbar = tk.Scrollbar(popup_itens, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+
+    container = ctk.CTkFrame(canvas, fg_color=bg_color)
+    container_id = canvas.create_window((0, 0), window=container, anchor="nw")
+
+    def on_configure(event=None):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+        canvas.itemconfig(container_id, width=canvas.winfo_width())
+
+    canvas.bind("<Configure>", on_configure)
+    container.bind("<Configure>", on_configure)
+    canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
+
+    row = 0
+    col = 0
+    for base_nome in sorted(base_templates):
+        nome_exibido = nomes_amigaveis.get(base_nome, base_nome.capitalize())
+        if base_nome not in itens_ativos:
+            itens_ativos[base_nome] = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            container,
+            text=nome_exibido,
+            variable=itens_ativos[base_nome],
+            bg=bg_color,
+            fg="white",
+            selectcolor=bg_color,
+            activebackground=bg_color,
+            activeforeground="white",
+        ).grid(row=row, column=col, sticky="w", padx=10, pady=2)
+
+        col += 1
+        if col > 1:
+            col = 0
+            row += 1
+
+    tk.Button(
+        container,
+        text="Salvar",
+        command=popup_itens.destroy,
+        width=10,
+        bg="#2a2a2a",
+        fg="#e0e0e0",
+        activeforeground="#ffffff",
+        highlightbackground="#4f9ddc",
+        highlightthickness=2,
+        activebackground="#3a3a3a",
+    ).grid(row=row + 1, column=0, columnspan=2, pady=10)
+
+    popup_itens.after(50, popup_itens.deiconify)
+
+
 def abrir_seletor_janelas():
     global popup_config
 
@@ -963,7 +1039,7 @@ def abrir_seletor_janelas():
     def mostrar_config(nome):
         for fr in config_frames.values():
             fr.pack_forget()
-        frame = config_frames.get(nome)
+        frame = config_frames.get(nome) or config_frames.get("__placeholder__")
         if frame:
             frame.pack(pady=5, fill="x", padx=25)
 
@@ -971,13 +1047,147 @@ def abrir_seletor_janelas():
         janela_var.set(value)
         mostrar_config(value)
 
-    combo = ctk.CTkComboBox(container, values=janelas, variable=janela_var, command=selecionar)
+    combo = ctk.CTkComboBox(container, values=janelas, variable=janela_var, command=selecionar, width=200)
     if janela_var.get():
         combo.set(janela_var.get())
     else:
         combo.set("Selecione")
         janela_var.set("")
     combo.pack(padx=10, pady=(5, 10))
+
+    placeholder_vars = {
+        "desativar_centralizacao": tk.BooleanVar(),
+        "desativar_coleta": tk.BooleanVar(),
+        "kalima": tk.BooleanVar(),
+        "habilitado": tk.BooleanVar(),
+    }
+
+    def on_placeholder_toggle(var):
+        if not janela_var.get():
+            aviso_customizado("Selecione a janela antes")
+            var.set(False)
+
+    frame_placeholder = tk.Frame(container, bg=bg_color)
+    config_frames["__placeholder__"] = frame_placeholder
+
+    checkbox_frame_ph = tk.Frame(frame_placeholder, bg=bg_color)
+    checkbox_frame_ph.pack(pady=5, fill="x")
+
+    tk.Checkbutton(
+        checkbox_frame_ph,
+        text="Des. Mouse Centro",
+        variable=placeholder_vars["desativar_centralizacao"],
+        bg=bg_color,
+        fg="white",
+        selectcolor=bg_color,
+        activebackground=bg_color,
+        activeforeground="white",
+        command=lambda v=placeholder_vars["desativar_centralizacao"]: on_placeholder_toggle(v),
+    ).grid(row=0, column=1, sticky="w", padx=(0, 5))
+
+    tk.Checkbutton(
+        checkbox_frame_ph,
+        text="Desativar Coleta",
+        variable=placeholder_vars["desativar_coleta"],
+        bg=bg_color,
+        fg="white",
+        selectcolor=bg_color,
+        activebackground=bg_color,
+        activeforeground="white",
+        command=lambda v=placeholder_vars["desativar_coleta"]: on_placeholder_toggle(v),
+    ).grid(row=0, column=0, sticky="w", padx=(0, 5))
+
+    tk.Checkbutton(
+        checkbox_frame_ph,
+        text="Kalima",
+        variable=placeholder_vars["kalima"],
+        bg=bg_color,
+        fg="white",
+        selectcolor=bg_color,
+        activebackground=bg_color,
+        activeforeground="white",
+        command=lambda v=placeholder_vars["kalima"]: on_placeholder_toggle(v),
+    ).grid(row=1, column=1, sticky="w", padx=(0, 5))
+
+    tk.Checkbutton(
+        checkbox_frame_ph,
+        text="Buff",
+        variable=placeholder_vars["habilitado"],
+        bg=bg_color,
+        fg="white",
+        selectcolor=bg_color,
+        activebackground=bg_color,
+        activeforeground="white",
+        command=lambda v=placeholder_vars["habilitado"]: on_placeholder_toggle(v),
+    ).grid(row=1, column=0, sticky="w", padx=(0, 5))
+
+    linha_ph = tk.Frame(frame_placeholder, bg=bg_color)
+    linha_ph.pack(anchor="w", pady=1)
+
+    tk.Label(linha_ph, text="Tempo (s):", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
+    tk.Entry(
+        linha_ph,
+        width=4,
+        bg="#333333",
+        fg="white",
+        insertbackground="white",
+        state="disabled",
+    ).pack(side="left", padx=(5, 10))
+
+    tk.Label(linha_ph, text="Buff:", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
+    tk.Entry(
+        linha_ph,
+        width=2,
+        bg="#333333",
+        fg="white",
+        insertbackground="white",
+        state="disabled",
+    ).pack(side="left", padx=5)
+
+    tk.Label(linha_ph, text="Atk:", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
+    tk.Entry(
+        linha_ph,
+        width=2,
+        bg="#333333",
+        fg="white",
+        insertbackground="white",
+        state="disabled",
+    ).pack(side="left")
+
+    linha_tempo_ph = tk.Frame(frame_placeholder, bg=bg_color)
+    linha_tempo_ph.pack(anchor="w")
+
+    tk.Label(
+        linha_tempo_ph,
+        text="Coletar (m):",
+        bg=bg_color,
+        fg="white",
+        font=("Arial", 9),
+    ).pack(side="left", pady=(10, 0))
+    tk.Entry(
+        linha_tempo_ph,
+        width=3,
+        bg="#333333",
+        fg="white",
+        insertbackground="white",
+        state="disabled",
+    ).pack(side="left", pady=(10, 0))
+
+    tk.Label(
+        linha_tempo_ph,
+        text="Pausa (m):",
+        bg=bg_color,
+        fg="white",
+        font=("Arial", 9),
+    ).pack(side="left", pady=(10, 0))
+    tk.Entry(
+        linha_tempo_ph,
+        width=3,
+        bg="#333333",
+        fg="white",
+        insertbackground="white",
+        state="disabled",
+    ).pack(side="left", pady=(10, 0))
 
     for nome in janelas:
         if nome not in buff_config:
@@ -1127,39 +1337,21 @@ def abrir_seletor_janelas():
 
         frame.pack_forget()
 
-    if janela_var.get() in config_frames:
-        mostrar_config(janela_var.get())
+    mostrar_config(janela_var.get())
 
-    separador = tk.Label(container, text="Itens para coletar:", bg=bg_color, fg="#D4AF37", font=("Arial", 10, "bold"))
-    separador.pack(anchor="w", pady=(10, 0), padx=10)
-
-    frame_itens = tk.Frame(container, bg=bg_color)
-    frame_itens.pack(pady=5)
-
-    row = 0
-    col = 0
-    for base_nome in sorted(base_templates):
-        nome_exibido = nomes_amigaveis.get(base_nome, base_nome.capitalize())
-
-        if base_nome not in itens_ativos:
-            itens_ativos[base_nome] = tk.BooleanVar(value=True)
-
-        cb = tk.Checkbutton(
-            frame_itens,
-            text=nome_exibido,
-            variable=itens_ativos[base_nome],
-            bg=bg_color,
-            fg="white",
-            selectcolor=bg_color,
-            activebackground=bg_color,
-            activeforeground="white",
-        )
-        cb.grid(row=row, column=col, sticky="w", padx=10, pady=2)
-
-        col += 1
-        if col > 1:
-            col = 0
-            row += 1
+    btn_itens = tk.Button(
+        container,
+        text="Itens para coletar",
+        command=abrir_itens_submenu,
+        width=15,
+        bg="#2a2a2a",
+        fg="#e0e0e0",
+        activeforeground="#ffffff",
+        highlightbackground="#4f9ddc",
+        highlightthickness=2,
+        activebackground="#3a3a3a",
+    )
+    btn_itens.pack(pady=(10, 5))
 
     def on_salvar():
         salvar_config()
