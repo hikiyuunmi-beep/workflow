@@ -390,15 +390,6 @@ def aviso_customizado(mensagem):
 def make_lparam(x: int, y: int):
     return y << 16 | x & 0xFFFF
 
-def find_window_titles_by_partial_title(partial_title):
-    titles = []
-    def enum_windows_callback(handle, _):
-        window_title = win32gui.GetWindowText(handle)
-        if partial_title in window_title:
-            titles.append(window_title)
-    win32gui.EnumWindows(enum_windows_callback, None)
-    return titles
-
 def find_window_handle_and_pid_by_partial_title(partial_titles):
     hwnds = []
 
@@ -890,7 +881,7 @@ def atualizar_indicadores():
         kalimas = False
 
 # Simulando as janelas encontradas
-janelas = []
+janelas = ["[1/3] MUCABRASIL", "[2/3] MUCABRASIL", "[3/3] MUCABRASIL"]
 janela_vars = {}
 popup_config = None
 
@@ -941,8 +932,7 @@ def safe_focus(janela):
         return False
 
 def abrir_seletor_janelas():
-    global popup_config, janelas
-    janelas = find_window_titles_by_partial_title("MUCABRASIL")
+    global popup_config
 
     if popup_config is not None and popup_config.winfo_exists():
         try:
