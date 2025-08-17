@@ -14,6 +14,7 @@ import win32con
 import win32process
 from pymem import Pymem
 import pymem.process
+import interception
 
 
 VERSAO_ATUAL = "1.2.8-MG"
@@ -193,18 +194,15 @@ def set_data_expiracao(data_str: str):
 def pressionar_tecla(hwnd, tecla_char):
     try:
         win32gui.SetForegroundWindow(hwnd)
-    except:
-        pass
-
-    vk_code = {
-        "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34, "5": 0x35,
-        "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39, "0": 0x30
-    }.get(tecla_char)
-
-    if vk_code:
-        win32api.keybd_event(vk_code, 0, 0, 0)
         time.sleep(0.05)
-        win32api.keybd_event(vk_code, 0, win32con.KEYEVENTF_KEYUP, 0)
+    except Exception as e:
+        print(f"Failed to set foreground window: {e}")
+
+    if tecla_char:
+        try:
+            interception.press(tecla_char)
+        except Exception as e:
+            print(f"Failed to press key '{tecla_char}' using interception: {e}")
 
 
 def mouse_dentro_jogo(hwnd):
@@ -599,6 +597,14 @@ def iniciar_bot():
     if not bot_ativo:
         return
 
+    try:
+        interception.auto_capture_devices(keyboard=True, mouse=False)
+    except Exception as e:
+        print(f"Falha ao iniciar o driver de interceptação: {e}")
+        aviso_customizado("Falha ao iniciar o driver de interceptação.\\nVerifique se o driver está instalado.")
+        alternar_bot()
+        return
+
     partial_titles = [nome for nome, var in janela_vars.items() if var.get()]
     if not partial_titles:
         aviso_customizado("Nenhuma janela foi selecionada.")
@@ -607,7 +613,7 @@ def iniciar_bot():
     hwnds = find_window_handle_and_pid_by_partial_title(partial_titles)
     if not hwnds:
         return
-    
+
     coleta_pausa_timers = {}
 
     for hwnd in hwnds:
@@ -710,7 +716,7 @@ def iniciar_bot():
                             win32gui.SetForegroundWindow(hwnd)
                         except:
                             pass
-                    
+
                         pressionar_tecla(hwnd, tecla_buff)
                         time.sleep(0.1)
                         pressionar_tecla(hwnd, tecla_ataque)
@@ -827,7 +833,7 @@ def iniciar_bot():
                         time.sleep(0.02)
                         left_click(hwnd, x2_click, y2_click)
                         ultima_pos_bot = (x2_click, y2_click)
-                        
+
                         if rechecar_item(hwnd, nome, x2_click, y2_click):
                             pressionar_direito(hwnd)
                             time.sleep(3)
@@ -842,7 +848,7 @@ def iniciar_bot():
                     center_y = (bottom - top) // 2 - 50
                     ultima_pos_bot = (center_x, center_y)
                     pressionar_direito(hwnd)
-    
+
             time.sleep(1 / 24)
 
     except KeyboardInterrupt:
