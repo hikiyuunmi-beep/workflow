@@ -62,6 +62,7 @@ status_vars = {}
 status_labels = {}
 zona_perigo = {}
 janela_ativa = {}
+selected_window_var = None
 
 # Adicionado para detectar movimento humano
 ultima_pos_mouse_real = (0, 0)
@@ -239,7 +240,7 @@ def soltar_direito(hwnd):
     time.sleep(0.02)
 
 def carregar_config():
-    global kalimas, MARGIN_PERCENT, itens_ativos
+    global kalimas, MARGIN_PERCENT, itens_ativos, selected_window_var
 
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
@@ -248,26 +249,51 @@ def carregar_config():
             MARGIN_PERCENT = config.get("margin_percent", 0.15)
             itens_salvos = config.get("itens_ativos", [])
             buffs_lidos = config.get("buffs", {})
+            selected_window = config.get("selected_window", "")
+            if selected_window_var is None:
+                selected_window_var = tk.StringVar(value=selected_window)
+            else:
+                selected_window_var.set(selected_window)
+
     else:
         kalimas = False
         MARGIN_PERCENT = 0.15
         itens_salvos = []
         buffs_lidos = {}
+        if selected_window_var is None:
+            selected_window_var = tk.StringVar()
+
 
     for nome_base in base_templates:
         itens_ativos[nome_base] = tk.BooleanVar(value=(nome_base in itens_salvos))
 
-    for nome, dados in buffs_lidos.items():
-        buff_config[nome] = {
-            "habilitado": tk.BooleanVar(value=dados.get("habilitado", False)),
-            "intervalo": tk.StringVar(value=str(dados.get("intervalo", 240))),
-            "tecla_buff": tk.StringVar(value=dados.get("tecla_buff", "2")),
-            "tecla_ataque": tk.StringVar(value=dados.get("tecla_ataque", "1")),
-            "desativar_centralizacao": tk.BooleanVar(value=dados.get("desativar_centralizacao", False)),
-            "desativar_coleta": tk.BooleanVar(value=dados.get("desativar_coleta", False)),
-            "tempo_coleta": tk.StringVar(value=str(dados.get("tempo_coleta", 60))),
-            "tempo_pausa": tk.StringVar(value=str(dados.get("tempo_pausa", 1))),
-            "kalima": tk.BooleanVar(value=dados.get("kalima", False))
+    # Since we now have a single selection, we can simplify the buff_config
+    # to not be a dictionary of dictionaries. For now, we'll just load the first one
+    # if it exists, or create a default one.
+    if buffs_lidos:
+        first_window_config = next(iter(buffs_lidos.values()))
+        buff_config['default'] = {
+            "habilitado": tk.BooleanVar(value=first_window_config.get("habilitado", False)),
+            "intervalo": tk.StringVar(value=str(first_window_config.get("intervalo", 240))),
+            "tecla_buff": tk.StringVar(value=first_window_config.get("tecla_buff", "2")),
+            "tecla_ataque": tk.StringVar(value=first_window_config.get("tecla_ataque", "1")),
+            "desativar_centralizacao": tk.BooleanVar(value=first_window_config.get("desativar_centralizacao", False)),
+            "desativar_coleta": tk.BooleanVar(value=first_window_config.get("desativar_coleta", False)),
+            "tempo_coleta": tk.StringVar(value=str(first_window_config.get("tempo_coleta", 60))),
+            "tempo_pausa": tk.StringVar(value=str(first_window_config.get("tempo_pausa", 1))),
+            "kalima": tk.BooleanVar(value=first_window_config.get("kalima", False))
+        }
+    else:
+        buff_config['default'] = {
+            "habilitado": tk.BooleanVar(value=False),
+            "intervalo": tk.StringVar(value="240"),
+            "tecla_buff": tk.StringVar(value="2"),
+            "tecla_ataque": tk.StringVar(value="1"),
+            "desativar_centralizacao": tk.BooleanVar(value=False),
+            "desativar_coleta": tk.BooleanVar(value=False),
+            "tempo_coleta": tk.StringVar(value="60"),
+            "tempo_pausa": tk.StringVar(value="1"),
+            "kalima": tk.BooleanVar(value=False)
         }
 
 def atualizar_tempo():
@@ -328,34 +354,31 @@ def agrupar_itens_unicos():
 def salvar_config():
     global kalimas, MARGIN_PERCENT
 
-    for nome in janelas:
-        if nome not in janela_vars:
-            janela_vars[nome] = tk.BooleanVar()
-
-    partial_titles = [nome for nome, var in janela_vars.items() if var.get()]
-    if not partial_titles:
+    selected_window = selected_window_var.get()
+    if not selected_window:
         aviso_customizado("Nenhuma janela foi selecionada.")
         return
 
     itens_marcados = [nome for nome, var in itens_ativos.items() if var.get()]
 
-    buffs = {}
-    for nome in buff_config:
-        buffs[nome] = {
-            "habilitado": buff_config[nome]["habilitado"].get(),
-            "intervalo": int(buff_config[nome]["intervalo"].get() or 240),
-            "tecla_buff": buff_config[nome]["tecla_buff"].get(),
-            "tecla_ataque": buff_config[nome]["tecla_ataque"].get(),
-            "desativar_centralizacao": buff_config[nome]["desativar_centralizacao"].get(),
-            "desativar_coleta": buff_config[nome]["desativar_coleta"].get(),
-            "tempo_coleta": int(buff_config[nome]["tempo_coleta"].get() or 60),
-            "tempo_pausa": int(buff_config[nome]["tempo_pausa"].get() or 1),
-            "kalima": buff_config[nome]["kalima"].get()
+    # We save the settings under a 'default' key, as it's no longer per-window
+    buffs = {
+        'default': {
+            "habilitado": buff_config['default']["habilitado"].get(),
+            "intervalo": int(buff_config['default']["intervalo"].get() or 240),
+            "tecla_buff": buff_config['default']["tecla_buff"].get(),
+            "tecla_ataque": buff_config['default']["tecla_ataque"].get(),
+            "desativar_centralizacao": buff_config['default']["desativar_centralizacao"].get(),
+            "desativar_coleta": buff_config['default']["desativar_coleta"].get(),
+            "tempo_coleta": int(buff_config['default']["tempo_coleta"].get() or 60),
+            "tempo_pausa": int(buff_config['default']["tempo_pausa"].get() or 1),
+            "kalima": buff_config['default']["kalima"].get()
         }
+    }
 
     config = {
         "margin_percent": MARGIN_PERCENT,
-        "janelas_selecionadas": partial_titles,
+        "selected_window": selected_window,
         "itens_ativos": itens_marcados,
         "buffs": buffs
     }
@@ -389,6 +412,15 @@ def aviso_customizado(mensagem):
 
 def make_lparam(x: int, y: int):
     return y << 16 | x & 0xFFFF
+
+def find_window_titles_by_partial_title(partial_title):
+    titles = []
+    def enum_windows_callback(handle, _):
+        window_title = win32gui.GetWindowText(handle)
+        if partial_title in window_title:
+            titles.append(window_title)
+    win32gui.EnumWindows(enum_windows_callback, None)
+    return titles
 
 def find_window_handle_and_pid_by_partial_title(partial_titles):
     hwnds = []
@@ -605,10 +637,12 @@ def iniciar_bot():
         alternar_bot()
         return
 
-    partial_titles = [nome for nome, var in janela_vars.items() if var.get()]
-    if not partial_titles:
+    selected_window = selected_window_var.get()
+    if not selected_window:
         aviso_customizado("Nenhuma janela foi selecionada.")
         return
+
+    partial_titles = [selected_window]
 
     hwnds = find_window_handle_and_pid_by_partial_title(partial_titles)
     if not hwnds:
@@ -620,7 +654,7 @@ def iniciar_bot():
         titulo_completo = win32gui.GetWindowText(hwnd)
         titulo_parcial = next((nome for nome in buff_config if nome in titulo_completo), None)
         if not titulo_parcial:
-            continue
+            titulo_parcial = 'default' # Fallback to default if no specific config
 
         _, pid = win32process.GetWindowThreadProcessId(hwnd)
         pm = Pymem()
@@ -650,8 +684,8 @@ def iniciar_bot():
 
     try:
         while bot_ativo:
-            partial_titles = [nome for nome, var in janela_vars.items() if var.get()]
-            if not partial_titles:
+            partial_titles = [selected_window_var.get()]
+            if not partial_titles[0]:
                 time.sleep(1)
                 continue
 
@@ -685,9 +719,7 @@ def iniciar_bot():
             # LOOP 1: janelas com desativar_coleta = True
             for hwnd in hwnds:
                 titulo_completo = win32gui.GetWindowText(hwnd)
-                titulo_parcial = next((nome for nome in buff_config if nome in titulo_completo), None)
-                if not titulo_parcial:
-                    continue
+                titulo_parcial = 'default' # Only one config now
 
                 config = buff_config[titulo_parcial]
                 if not config.get("desativar_coleta", tk.BooleanVar(value=False)).get():
@@ -725,9 +757,7 @@ def iniciar_bot():
             # LOOP 2: janelas com coleta ativa
             for hwnd in hwnds:
                 titulo_completo = win32gui.GetWindowText(hwnd)
-                titulo_parcial = next((nome for nome in buff_config if nome in titulo_completo), None)
-                if not titulo_parcial:
-                    continue
+                titulo_parcial = 'default' # Only one config now
 
                 config = buff_config[titulo_parcial]
                 em_perigo = zona_perigo.get(titulo_parcial, False)
@@ -881,7 +911,7 @@ def atualizar_indicadores():
         kalimas = False
 
 # Simulando as janelas encontradas
-janelas = ["[1/3] MUCABRASIL", "[2/3] MUCABRASIL", "[3/3] MUCABRASIL"]
+janelas = []
 janela_vars = {}
 popup_config = None
 
@@ -932,7 +962,12 @@ def safe_focus(janela):
         return False
 
 def abrir_seletor_janelas():
-    global popup_config
+    global popup_config, janelas, selected_window_var
+    janelas = find_window_titles_by_partial_title("MUCABRASIL")
+
+    if not janelas:
+        aviso_customizado("Nenhuma janela do MUCABRASIL encontrada.")
+        return
 
     if popup_config is not None and popup_config.winfo_exists():
         try:
@@ -979,93 +1014,66 @@ def abrir_seletor_janelas():
 
     canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
 
-    instrucao_telas = tk.Label(container, text="Selecione as opções:", bg=bg_color, fg="#D4AF37", font=("Arial", 10, "bold"))
+    instrucao_telas = tk.Label(container, text="Selecione a janela:", bg=bg_color, fg="#D4AF37", font=("Arial", 10, "bold"))
     instrucao_telas.pack(anchor="w", pady=(10, 0), padx=(10, 0))
 
-    for nome in janelas:
-        if nome not in janela_vars:
-            janela_vars[nome] = tk.BooleanVar()
+    if selected_window_var is None:
+        selected_window_var = tk.StringVar()
 
-        if nome not in buff_config:
-            buff_config[nome] = {
-                "selecionado": tk.BooleanVar(value=False),
-                "habilitado": tk.BooleanVar(),
-                "intervalo": tk.StringVar(value="240"),
-                "tecla_buff": tk.StringVar(value="2"),
-                "tecla_ataque": tk.StringVar(value="1"),
-                "desativar_centralizacao": tk.BooleanVar(value=False),
-                "desativar_coleta": tk.BooleanVar(value=False),
-                "tempo_coleta": tk.StringVar(value="60"),
-                "tempo_pausa": tk.StringVar(value="1"),
-                "kalima": tk.BooleanVar(value=False)
-            }
-        else:
-            for chave, valor_padrao in {
-                "selecionado": tk.BooleanVar(value=False),
-                "habilitado": tk.BooleanVar(),
-                "intervalo": tk.StringVar(value="240"),
-                "tecla_buff": tk.StringVar(value="2"),
-                "tecla_ataque": tk.StringVar(value="1"),
-                "desativar_centralizacao": tk.BooleanVar(value=False),
-                "desativar_coleta": tk.BooleanVar(value=False),
-                "tempo_coleta": tk.StringVar(value="5"),
-                "tempo_pausa": tk.StringVar(value="2"),
-                "kalima": tk.BooleanVar(value=False)
-            }.items():
-                if chave not in buff_config[nome]:
-                    buff_config[nome][chave] = valor_padrao
+    # Set default value if current value is not in the list of available windows
+    if selected_window_var.get() not in janelas:
+        selected_window_var.set(janelas[0] if janelas else "")
 
-        janela_frame = tk.Frame(container, bg=bg_color)
-        janela_frame.pack(pady=5, fill="x")
+    dropdown = ctk.CTkOptionMenu(container, variable=selected_window_var, values=janelas)
+    dropdown.pack(pady=5, padx=10, fill="x")
 
-        tk.Checkbutton(janela_frame, text=f"{nome}", variable=janela_vars[nome],
-                       bg=bg_color, fg="#0eaeab", selectcolor=bg_color, activebackground=bg_color, font=("Arial", 9, "bold"))\
-            .pack(anchor="w", padx=10)
+    # Settings widgets are now outside the loop
+    config = buff_config['default']
 
-        checkbox_frame = tk.Frame(janela_frame, bg=bg_color)
-        checkbox_frame.pack(pady=5, fill="x", padx=25)
+    checkbox_frame = tk.Frame(container, bg=bg_color)
+    checkbox_frame.pack(pady=5, fill="x", padx=25)
 
-        tk.Checkbutton(checkbox_frame, text="Des. Mouse Centro", variable=buff_config[nome]["desativar_centralizacao"],
-                       bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
-            .grid(row=0, column=1, sticky="w", padx=(0, 5))
+    tk.Checkbutton(checkbox_frame, text="Des. Mouse Centro", variable=config["desativar_centralizacao"],
+                    bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
+        .grid(row=0, column=1, sticky="w", padx=(0, 5))
 
-        tk.Checkbutton(checkbox_frame, text="Desativar Coleta", variable=buff_config[nome]["desativar_coleta"],
-                       bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
-            .grid(row=0, column=0, sticky="w", padx=(0, 5))
+    tk.Checkbutton(checkbox_frame, text="Desativar Coleta", variable=config["desativar_coleta"],
+                    bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
+        .grid(row=0, column=0, sticky="w", padx=(0, 5))
 
-        tk.Checkbutton(checkbox_frame, text="Kalima", variable=buff_config[nome]["kalima"],
-                       bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
-            .grid(row=1, column=1, sticky="w", padx=(0, 5))
+    tk.Checkbutton(checkbox_frame, text="Kalima", variable=config["kalima"],
+                    bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
+        .grid(row=1, column=1, sticky="w", padx=(0, 5))
 
-        tk.Checkbutton(checkbox_frame, text="Buff", variable=buff_config[nome]["habilitado"],
-                       bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
-            .grid(row=1, column=0, sticky="w", padx=(0, 5))
+    tk.Checkbutton(checkbox_frame, text="Buff", variable=config["habilitado"],
+                    bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
+        .grid(row=1, column=0, sticky="w", padx=(0, 5))
 
-        linha = tk.Frame(container, bg=bg_color)
-        linha.pack(anchor="w", padx=25, pady=1)
+    linha = tk.Frame(container, bg=bg_color)
+    linha.pack(anchor="w", padx=25, pady=1)
 
-        tk.Label(linha, text="Tempo (s):", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
-        tk.Entry(linha, textvariable=buff_config[nome]["intervalo"], width=4,
-                 bg="#333333", fg="white", insertbackground="white").pack(side="left", padx=(5, 10))
+    tk.Label(linha, text="Tempo (s):", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
+    tk.Entry(linha, textvariable=config["intervalo"], width=4,
+                bg="#333333", fg="white", insertbackground="white").pack(side="left", padx=(5, 10))
 
-        tk.Label(linha, text="Buff:", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
-        tk.Entry(linha, textvariable=buff_config[nome]["tecla_buff"], width=2,
-                 bg="#333333", fg="white", insertbackground="white").pack(side="left", padx=5)
+    tk.Label(linha, text="Buff:", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
+    tk.Entry(linha, textvariable=config["tecla_buff"], width=2,
+                bg="#333333", fg="white", insertbackground="white").pack(side="left", padx=5)
 
-        tk.Label(linha, text="Atk:", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
-        tk.Entry(linha, textvariable=buff_config[nome]["tecla_ataque"], width=2,
-                 bg="#333333", fg="white", insertbackground="white").pack(side="left")
+    tk.Label(linha, text="Atk:", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
+    tk.Entry(linha, textvariable=config["tecla_ataque"], width=2,
+                bg="#333333", fg="white", insertbackground="white").pack(side="left")
 
-        linha_tempo = tk.Frame(container, bg=bg_color)
-        linha_tempo.pack(anchor="w", padx=25)
+    linha_tempo = tk.Frame(container, bg=bg_color)
+    linha_tempo.pack(anchor="w", padx=25)
 
-        tk.Label(linha_tempo, text="Coletar (m):", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left", pady=(10, 0))
-        tk.Entry(linha_tempo, textvariable=buff_config[nome]["tempo_coleta"], width=3,
-                 bg="#333333", fg="white", insertbackground="white").pack(side="left", pady=(10, 0))
+    tk.Label(linha_tempo, text="Coletar (m):", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left", pady=(10, 0))
+    tk.Entry(linha_tempo, textvariable=config["tempo_coleta"], width=3,
+                bg="#333333", fg="white", insertbackground="white").pack(side="left", pady=(10, 0))
 
-        tk.Label(linha_tempo, text="Pausa (m):", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left", pady=(10, 0))
-        tk.Entry(linha_tempo, textvariable=buff_config[nome]["tempo_pausa"], width=3,
-                 bg="#333333", fg="white", insertbackground="white").pack(side="left", pady=(10, 0))
+    tk.Label(linha_tempo, text="Pausa (m):", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left", pady=(10, 0))
+    tk.Entry(linha_tempo, textvariable=config["tempo_pausa"], width=3,
+                bg="#333333", fg="white", insertbackground="white").pack(side="left", pady=(10, 0))
 
     separador = tk.Label(container, text="Itens para coletar:", bg=bg_color, fg="#D4AF37", font=("Arial", 10, "bold"))
     separador.pack(anchor="w", pady=(10, 0), padx=(10, 0))
@@ -1108,6 +1116,7 @@ ctk.set_appearance_mode("dark")
 root = ctk.CTk()
 root.configure(fg_color="#1A1A1A")
 base_templates = agrupar_itens_unicos()
+selected_window_var = tk.StringVar()
 carregar_config()
 root.title("VKG - Autopick")
 root.geometry("335x160")
