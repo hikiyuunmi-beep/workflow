@@ -964,8 +964,9 @@ def safe_focus(janela):
 def abrir_seletor_janelas():
     global popup_config, janelas, selected_window_var
     janelas = find_window_titles_by_partial_title("MUCABRASIL")
+    shortened_titles = [t.split(' - ')[0] for t in janelas]
 
-    if not janelas:
+    if not shortened_titles:
         aviso_customizado("Nenhuma janela do MUCABRASIL encontrada.")
         return
 
@@ -1021,10 +1022,10 @@ def abrir_seletor_janelas():
         selected_window_var = tk.StringVar()
 
     # Set default value if current value is not in the list of available windows
-    if selected_window_var.get() not in janelas:
-        selected_window_var.set(janelas[0] if janelas else "")
+    if selected_window_var.get() not in shortened_titles:
+        selected_window_var.set(shortened_titles[0] if shortened_titles else "")
 
-    dropdown = ctk.CTkOptionMenu(container, variable=selected_window_var, values=janelas)
+    dropdown = ctk.CTkOptionMenu(container, variable=selected_window_var, values=shortened_titles, fg_color="#2A2A2A", button_color="#D4AF37")
     dropdown.pack(pady=5, padx=10, fill="x")
 
     # Settings widgets are now outside the loop
