@@ -1034,7 +1034,8 @@ def abrir_seletor_janelas():
         tempo_pausa_var.set(config["tempo_pausa"].get())
         kalima_var.set(config["kalima"].get())
 
-    dropdown = ctk.CTkOptionMenu(container, variable=selected_window_var, values=shortened_titles, fg_color="#2A2A2A", button_color="#D4AF37", command=option_changed)
+    dropdown = tk.OptionMenu(container, selected_window_var, *shortened_titles, command=option_changed)
+    dropdown.config(bg="#2A2A2A", fg="#D4AF37", activebackground="#3A3A3A", activeforeground="#FFFFFF")
     dropdown.pack(pady=5, padx=10, fill="x")
 
     # Create variables for the settings widgets
