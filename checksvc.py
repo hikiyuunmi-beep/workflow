@@ -21,8 +21,6 @@ import interception
 
 VERSAO_ATUAL = "1.2.8-MG"
 
-if __name__ == "__main__":
-    exit()
 
 base_templates = {}
 itens_ativos = {}
@@ -163,6 +161,40 @@ deslocamentos_kalima = {
     'red_chocolate_box_res1024': (5, 10),
     'pink_chocolate_box_res1024': (5, 10)
 }
+
+def agrupar_itens_unicos():
+    base_por_template = {
+        'zen_res800fhd': 'zen',
+        'zen_1024': 'zen',
+        'Jewels_res800fhd': 'jewels',
+        'Jewels_1024': 'jewels',
+        'gemstone_res800fhd': 'gemstone',
+        'gemstone_1024': 'gemstone',
+        'devils_key_res800fhd': 'devils',
+        'devils_key_res1024': 'devils',
+        'devils_eye_6_res800fhd': 'devils',
+        'devils_eye_6_1024': 'devils',
+        'complex_potion_res800fhd': 'complex',
+        'complex_potion_1024': 'complex',
+        'symbol_of_kundun_6_res800fhd': 'symbol',
+        'symbol_of_kundun_6_1024': 'symbol',
+        'symbol_of_kundun_7_800fhd': 'symbol',
+        'symbol_of_kundun_7_1024': 'symbol',
+        'sign_of_lord_res800fhd': 'sign',
+        'sign_of_lord_1024': 'sign',
+        'horn_of_uniria_1024': 'pets',
+        'red_chocolate_box_res1024': 'box',
+        'pink_chocolate_box_res1024': 'box',
+        'red_chocolate_box_res800fhd': 'box',
+        'pink_chocolate_box_res800fhd': 'box',
+      }
+
+    agrupados = {}
+    for nome_template, base in base_por_template.items():
+        if base not in agrupados:
+            agrupados[base] = []
+        agrupados[base].append(nome_template)
+    return agrupados
 
 def pressionar_tecla(hwnd, tecla_char):
     try:
