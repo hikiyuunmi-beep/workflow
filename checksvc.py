@@ -240,7 +240,7 @@ def soltar_direito(hwnd):
     time.sleep(0.02)
 
 def carregar_config():
-    global kalimas, MARGIN_PERCENT, itens_ativos, selected_window_var
+    global kalimas, MARGIN_PERCENT, itens_ativos, selected_window_var, buff_config
 
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
@@ -263,37 +263,21 @@ def carregar_config():
         if selected_window_var is None:
             selected_window_var = tk.StringVar()
 
-
     for nome_base in base_templates:
         itens_ativos[nome_base] = tk.BooleanVar(value=(nome_base in itens_salvos))
 
-    # Since we now have a single selection, we can simplify the buff_config
-    # to not be a dictionary of dictionaries. For now, we'll just load the first one
-    # if it exists, or create a default one.
-    if buffs_lidos:
-        first_window_config = next(iter(buffs_lidos.values()))
-        buff_config['default'] = {
-            "habilitado": tk.BooleanVar(value=first_window_config.get("habilitado", False)),
-            "intervalo": tk.StringVar(value=str(first_window_config.get("intervalo", 240))),
-            "tecla_buff": tk.StringVar(value=first_window_config.get("tecla_buff", "2")),
-            "tecla_ataque": tk.StringVar(value=first_window_config.get("tecla_ataque", "1")),
-            "desativar_centralizacao": tk.BooleanVar(value=first_window_config.get("desativar_centralizacao", False)),
-            "desativar_coleta": tk.BooleanVar(value=first_window_config.get("desativar_coleta", False)),
-            "tempo_coleta": tk.StringVar(value=str(first_window_config.get("tempo_coleta", 60))),
-            "tempo_pausa": tk.StringVar(value=str(first_window_config.get("tempo_pausa", 1))),
-            "kalima": tk.BooleanVar(value=first_window_config.get("kalima", False))
-        }
-    else:
-        buff_config['default'] = {
-            "habilitado": tk.BooleanVar(value=False),
-            "intervalo": tk.StringVar(value="240"),
-            "tecla_buff": tk.StringVar(value="2"),
-            "tecla_ataque": tk.StringVar(value="1"),
-            "desativar_centralizacao": tk.BooleanVar(value=False),
-            "desativar_coleta": tk.BooleanVar(value=False),
-            "tempo_coleta": tk.StringVar(value="60"),
-            "tempo_pausa": tk.StringVar(value="1"),
-            "kalima": tk.BooleanVar(value=False)
+    # Load all window configs
+    for nome, dados in buffs_lidos.items():
+        buff_config[nome] = {
+            "habilitado": tk.BooleanVar(value=dados.get("habilitado", False)),
+            "intervalo": tk.StringVar(value=str(dados.get("intervalo", 240))),
+            "tecla_buff": tk.StringVar(value=dados.get("tecla_buff", "2")),
+            "tecla_ataque": tk.StringVar(value=dados.get("tecla_ataque", "1")),
+            "desativar_centralizacao": tk.BooleanVar(value=dados.get("desativar_centralizacao", False)),
+            "desativar_coleta": tk.BooleanVar(value=dados.get("desativar_coleta", False)),
+            "tempo_coleta": tk.StringVar(value=str(dados.get("tempo_coleta", 60))),
+            "tempo_pausa": tk.StringVar(value=str(dados.get("tempo_pausa", 1))),
+            "kalima": tk.BooleanVar(value=dados.get("kalima", False))
         }
 
 def atualizar_tempo():
@@ -361,20 +345,21 @@ def salvar_config():
 
     itens_marcados = [nome for nome, var in itens_ativos.items() if var.get()]
 
-    # We save the settings under a 'default' key, as it's no longer per-window
-    buffs = {
-        'default': {
-            "habilitado": buff_config['default']["habilitado"].get(),
-            "intervalo": int(buff_config['default']["intervalo"].get() or 240),
-            "tecla_buff": buff_config['default']["tecla_buff"].get(),
-            "tecla_ataque": buff_config['default']["tecla_ataque"].get(),
-            "desativar_centralizacao": buff_config['default']["desativar_centralizacao"].get(),
-            "desativar_coleta": buff_config['default']["desativar_coleta"].get(),
-            "tempo_coleta": int(buff_config['default']["tempo_coleta"].get() or 60),
-            "tempo_pausa": int(buff_config['default']["tempo_pausa"].get() or 1),
-            "kalima": buff_config['default']["kalima"].get()
+    # Save all configs
+    buffs = {}
+    for nome, config_vars in buff_config.items():
+        buffs[nome] = {
+            "habilitado": config_vars["habilitado"].get(),
+            "intervalo": int(config_vars["intervalo"].get() or 240),
+            "tecla_buff": config_vars["tecla_buff"].get(),
+            "tecla_ataque": config_vars["tecla_ataque"].get(),
+            "desativar_centralizacao": config_vars["desativar_centralizacao"].get(),
+            "desativar_coleta": config_vars["desativar_coleta"].get(),
+            "tempo_coleta": int(config_vars["tempo_coleta"].get() or 60),
+            "tempo_pausa": int(config_vars["tempo_pausa"].get() or 1),
+            "kalima": config_vars["kalima"].get()
         }
-    }
+
 
     config = {
         "margin_percent": MARGIN_PERCENT,
@@ -652,9 +637,12 @@ def iniciar_bot():
 
     for hwnd in hwnds:
         titulo_completo = win32gui.GetWindowText(hwnd)
-        titulo_parcial = next((nome for nome in buff_config if nome in titulo_completo), None)
-        if not titulo_parcial:
-            titulo_parcial = 'default' # Fallback to default if no specific config
+        titulo_parcial = titulo_completo.split(' - ')[0]
+
+        config = buff_config.get(titulo_parcial)
+        if not config:
+            # This should not happen if we ensure config exists when dropdown is populated
+            continue
 
         _, pid = win32process.GetWindowThreadProcessId(hwnd)
         pm = Pymem()
@@ -684,26 +672,28 @@ def iniciar_bot():
 
     try:
         while bot_ativo:
-            partial_titles = [selected_window_var.get()]
-            if not partial_titles[0]:
+            selected_window = selected_window_var.get()
+            if not selected_window:
                 time.sleep(1)
                 continue
 
-            hwnds = find_window_handle_and_pid_by_partial_title(partial_titles)
+            hwnds = find_window_handle_and_pid_by_partial_title([selected_window])
             if not hwnds:
                 time.sleep(1)
                 continue
 
+            # ... (rest of the loop is for a single window now, so it can be simplified)
+            hwnd = hwnds[0]
+            titulo_parcial = selected_window
+
             # VERIFICAR MOVIMENTO GLOBAL
             movimento_detectado = False
-            for hwnd in hwnds:
-                if mouse_dentro_jogo(hwnd):
-                    atual = win32gui.GetCursorPos()
-                    if atual != ultima_pos_mouse_real and atual != ultima_pos_bot:
-                        ultima_pos_mouse_real = atual
-                        tempo_parado = time.time()
-                        movimento_detectado = True
-                        break
+            if mouse_dentro_jogo(hwnd):
+                atual = win32gui.GetCursorPos()
+                if atual != ultima_pos_mouse_real and atual != ultima_pos_bot:
+                    ultima_pos_mouse_real = atual
+                    tempo_parado = time.time()
+                    movimento_detectado = True
 
             if movimento_detectado:
                 if not parar_por_movimento:
@@ -716,15 +706,10 @@ def iniciar_bot():
                 time.sleep(0.05)
                 continue
 
+            config = buff_config[titulo_parcial]
+
             # LOOP 1: janelas com desativar_coleta = True
-            for hwnd in hwnds:
-                titulo_completo = win32gui.GetWindowText(hwnd)
-                titulo_parcial = 'default' # Only one config now
-
-                config = buff_config[titulo_parcial]
-                if not config.get("desativar_coleta", tk.BooleanVar(value=False)).get():
-                    continue
-
+            if config.get("desativar_coleta", tk.BooleanVar(value=False)).get():
                 if not config.get("desativar_centralizacao", tk.BooleanVar(value=False)).get():
                     mover_mouse_para_centro(hwnd, offset_y=50, offset_x=7)
                     left, top, right, bottom = win32gui.GetWindowRect(hwnd)
@@ -753,75 +738,20 @@ def iniciar_bot():
                         time.sleep(0.1)
                         pressionar_tecla(hwnd, tecla_ataque)
                         buff_timers[titulo_parcial] = time.time()
+                continue # End of loop for this window
 
             # LOOP 2: janelas com coleta ativa
-            for hwnd in hwnds:
-                titulo_completo = win32gui.GetWindowText(hwnd)
-                titulo_parcial = 'default' # Only one config now
+            em_perigo = zona_perigo.get(titulo_parcial, False)
 
-                config = buff_config[titulo_parcial]
-                em_perigo = zona_perigo.get(titulo_parcial, False)
+            if em_perigo:
+                if not config.get("desativar_centralizacao", tk.BooleanVar(value=False)).get():
+                    mover_mouse_para_centro(hwnd, offset_y=50, offset_x=7)
+                    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+                    center_x = (right - left) // 2 - 7
+                    center_y = (bottom - top) // 2 - 50
+                    ultima_pos_bot = (center_x, center_y)
+                    pressionar_direito(hwnd)
 
-                if config.get("desativar_coleta", tk.BooleanVar(value=False)).get() or em_perigo:
-                    if em_perigo:
-                        if not config.get("desativar_centralizacao", tk.BooleanVar(value=False)).get():
-                            mover_mouse_para_centro(hwnd, offset_y=50, offset_x=7)
-                            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-                            center_x = (right - left) // 2 - 7
-                            center_y = (bottom - top) // 2 - 50
-                            ultima_pos_bot = (center_x, center_y)
-                            pressionar_direito(hwnd)
-
-                        if config["habilitado"].get():
-                            try:
-                                intervalo = int(config["intervalo"].get())
-                            except (ValueError, TypeError):
-                                intervalo = 240
-
-                            tecla_buff = config["tecla_buff"].get()
-                            tecla_ataque = config["tecla_ataque"].get()
-                            ultimo_tempo = buff_timers.get(titulo_parcial, 0)
-
-                            if time.time() - ultimo_tempo >= intervalo:
-                                try:
-                                    win32gui.ShowWindow(hwnd, 9)
-                                    win32gui.SetForegroundWindow(hwnd)
-                                except:
-                                    pass
-                                pressionar_tecla(hwnd, tecla_buff)
-                                time.sleep(0.1)
-                                pressionar_tecla(hwnd, tecla_ataque)
-                                buff_timers[titulo_parcial] = time.time()
-                    continue
-
-                # ⏱ Inicializar temporizador de coleta/pausa
-                if titulo_parcial not in coleta_pausa_timers:
-                    try:
-                        tempo_coleta = int(config.get("tempo_coleta", tk.StringVar(value="60")).get()) * 60
-                        tempo_pausa = int(config.get("tempo_pausa", tk.StringVar(value="1")).get()) * 60
-                    except (ValueError, TypeError):
-                        tempo_coleta, tempo_pausa = 300, 120
-                    coleta_pausa_timers[titulo_parcial] = {
-                        "inicio": time.time(),
-                        "em_pausa": False,
-                        "tempo_coleta": tempo_coleta,
-                        "tempo_pausa": tempo_pausa
-                    }
-
-                # ⏳ Atualizar tempo de pausa/coleta
-                timer = coleta_pausa_timers[titulo_parcial]
-                tempo_decorrido = time.time() - timer["inicio"]
-
-                if not timer["em_pausa"]:
-                    if tempo_decorrido >= timer["tempo_coleta"]:
-                        timer["em_pausa"] = True
-                        timer["inicio"] = time.time()
-                else:
-                    if tempo_decorrido >= timer["tempo_pausa"]:
-                        timer["em_pausa"] = False
-                        timer["inicio"] = time.time()
-
-                # 🧠 Buff automático
                 if config["habilitado"].get():
                     try:
                         intervalo = int(config["intervalo"].get())
@@ -842,42 +772,92 @@ def iniciar_bot():
                         time.sleep(0.1)
                         pressionar_tecla(hwnd, tecla_ataque)
                         buff_timers[titulo_parcial] = time.time()
+                continue # End of loop for this window
 
-                # ⛔ Se estiver em pausa, apenas centraliza e ataca
-                if timer["em_pausa"]:
-                    if not config.get("desativar_centralizacao", tk.BooleanVar(value=False)).get():
-                        mover_mouse_para_centro(hwnd, offset_y=50, offset_x=7)
-                        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-                        center_x = (right - left) // 2 - 7
-                        center_y = (bottom - top) // 2 - 50
-                        ultima_pos_bot = (center_x, center_y)
-                        pressionar_direito(hwnd)
-                    continue
+            # ⏱ Inicializar temporizador de coleta/pausa
+            if titulo_parcial not in coleta_pausa_timers:
+                try:
+                    tempo_coleta = int(config.get("tempo_coleta", tk.StringVar(value="60")).get()) * 60
+                    tempo_pausa = int(config.get("tempo_pausa", tk.StringVar(value="1")).get()) * 60
+                except (ValueError, TypeError):
+                    tempo_coleta, tempo_pausa = 300, 120
+                coleta_pausa_timers[titulo_parcial] = {
+                    "inicio": time.time(),
+                    "em_pausa": False,
+                    "tempo_coleta": tempo_coleta,
+                    "tempo_pausa": tempo_pausa
+                }
 
-                nome, _, _, x_item, y_item = localizar_item_na_tela(hwnd)
-                if nome:
-                    time.sleep(0.3)
-                    nome2, x2_click, y2_click, x2_item, y2_item = localizar_item_na_tela(hwnd)
-                    if nome2 == nome and abs(x2_item - x_item) <= 2 and abs(y2_item - y_item) <= 2:
-                        soltar_direito(hwnd)
-                        time.sleep(0.02)
-                        left_click(hwnd, x2_click, y2_click)
-                        ultima_pos_bot = (x2_click, y2_click)
+            # ⏳ Atualizar tempo de pausa/coleta
+            timer = coleta_pausa_timers[titulo_parcial]
+            tempo_decorrido = time.time() - timer["inicio"]
 
-                        if rechecar_item(hwnd, nome, x2_click, y2_click):
-                            pressionar_direito(hwnd)
-                            time.sleep(3)
-                            if rechecar_item(hwnd, nome, x2_click, y2_click):
-                                left_click(hwnd, x2_click, y2_click)
-                            continue
+            if not timer["em_pausa"]:
+                if tempo_decorrido >= timer["tempo_coleta"]:
+                    timer["em_pausa"] = True
+                    timer["inicio"] = time.time()
+            else:
+                if tempo_decorrido >= timer["tempo_pausa"]:
+                    timer["em_pausa"] = False
+                    timer["inicio"] = time.time()
 
-                elif not config.get("desativar_centralizacao", tk.BooleanVar(value=False)).get() and not timer["em_pausa"]:
+            # 🧠 Buff automático
+            if config["habilitado"].get():
+                try:
+                    intervalo = int(config["intervalo"].get())
+                except (ValueError, TypeError):
+                    intervalo = 240
+
+                tecla_buff = config["tecla_buff"].get()
+                tecla_ataque = config["tecla_ataque"].get()
+                ultimo_tempo = buff_timers.get(titulo_parcial, 0)
+
+                if time.time() - ultimo_tempo >= intervalo:
+                    try:
+                        win32gui.ShowWindow(hwnd, 9)
+                        win32gui.SetForegroundWindow(hwnd)
+                    except:
+                        pass
+                    pressionar_tecla(hwnd, tecla_buff)
+                    time.sleep(0.1)
+                    pressionar_tecla(hwnd, tecla_ataque)
+                    buff_timers[titulo_parcial] = time.time()
+
+            # ⛔ Se estiver em pausa, apenas centraliza e ataca
+            if timer["em_pausa"]:
+                if not config.get("desativar_centralizacao", tk.BooleanVar(value=False)).get():
                     mover_mouse_para_centro(hwnd, offset_y=50, offset_x=7)
                     left, top, right, bottom = win32gui.GetWindowRect(hwnd)
                     center_x = (right - left) // 2 - 7
                     center_y = (bottom - top) // 2 - 50
                     ultima_pos_bot = (center_x, center_y)
                     pressionar_direito(hwnd)
+                continue
+
+            nome, _, _, x_item, y_item = localizar_item_na_tela(hwnd)
+            if nome:
+                time.sleep(0.3)
+                nome2, x2_click, y2_click, x2_item, y2_item = localizar_item_na_tela(hwnd)
+                if nome2 == nome and abs(x2_item - x_item) <= 2 and abs(y2_item - y_item) <= 2:
+                    soltar_direito(hwnd)
+                    time.sleep(0.02)
+                    left_click(hwnd, x2_click, y2_click)
+                    ultima_pos_bot = (x2_click, y2_click)
+
+                    if rechecar_item(hwnd, nome, x2_click, y2_click):
+                        pressionar_direito(hwnd)
+                        time.sleep(3)
+                        if rechecar_item(hwnd, nome, x2_click, y2_click):
+                            left_click(hwnd, x2_click, y2_click)
+                        continue
+
+            elif not config.get("desativar_centralizacao", tk.BooleanVar(value=False)).get() and not timer["em_pausa"]:
+                mover_mouse_para_centro(hwnd, offset_y=50, offset_x=7)
+                left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+                center_x = (right - left) // 2 - 7
+                center_y = (bottom - top) // 2 - 50
+                ultima_pos_bot = (center_x, center_y)
+                pressionar_direito(hwnd)
 
             time.sleep(1 / 24)
 
@@ -962,13 +942,29 @@ def safe_focus(janela):
         return False
 
 def abrir_seletor_janelas():
-    global popup_config, janelas, selected_window_var
+    global popup_config, janelas, selected_window_var, buff_config
     janelas = find_window_titles_by_partial_title("MUCABRASIL")
     shortened_titles = [t.split(' - ')[0] for t in janelas]
 
     if not shortened_titles:
         aviso_customizado("Nenhuma janela do MUCABRASIL encontrada.")
         return
+
+    # Ensure there is a config for each window
+    for title in shortened_titles:
+        if title not in buff_config:
+            buff_config[title] = {
+                "habilitado": tk.BooleanVar(value=False),
+                "intervalo": tk.StringVar(value="240"),
+                "tecla_buff": tk.StringVar(value="2"),
+                "tecla_ataque": tk.StringVar(value="1"),
+                "desativar_centralizacao": tk.BooleanVar(value=False),
+                "desativar_coleta": tk.BooleanVar(value=False),
+                "tempo_coleta": tk.StringVar(value="60"),
+                "tempo_pausa": tk.StringVar(value="1"),
+                "kalima": tk.BooleanVar(value=False)
+            }
+
 
     if popup_config is not None and popup_config.winfo_exists():
         try:
@@ -983,7 +979,7 @@ def abrir_seletor_janelas():
     popup_config.after(250, lambda: safe_set_icon(popup_config, icon_path))
 
     popup_config.title("Configurações")
-    popup_config.geometry("360x710")
+    popup_config.geometry("360x420")
     popup_config.resizable(False, True)
     popup_config.configure(fg_color="#1A1A1A")
 
@@ -1025,28 +1021,50 @@ def abrir_seletor_janelas():
     if selected_window_var.get() not in shortened_titles:
         selected_window_var.set(shortened_titles[0] if shortened_titles else "")
 
-    dropdown = ctk.CTkOptionMenu(container, variable=selected_window_var, values=shortened_titles, fg_color="#2A2A2A", button_color="#D4AF37")
+    def option_changed(choice):
+        # Update the UI with the settings for the selected window
+        config = buff_config[choice]
+        habilitado_var.set(config["habilitado"].get())
+        intervalo_var.set(config["intervalo"].get())
+        tecla_buff_var.set(config["tecla_buff"].get())
+        tecla_ataque_var.set(config["tecla_ataque"].get())
+        desativar_centralizacao_var.set(config["desativar_centralizacao"].get())
+        desativar_coleta_var.set(config["desativar_coleta"].get())
+        tempo_coleta_var.set(config["tempo_coleta"].get())
+        tempo_pausa_var.set(config["tempo_pausa"].get())
+        kalima_var.set(config["kalima"].get())
+
+    dropdown = ctk.CTkOptionMenu(container, variable=selected_window_var, values=shortened_titles, fg_color="#2A2A2A", button_color="#D4AF37", command=option_changed)
     dropdown.pack(pady=5, padx=10, fill="x")
 
-    # Settings widgets are now outside the loop
-    config = buff_config['default']
+    # Create variables for the settings widgets
+    habilitado_var = tk.BooleanVar()
+    intervalo_var = tk.StringVar()
+    tecla_buff_var = tk.StringVar()
+    tecla_ataque_var = tk.StringVar()
+    desativar_centralizacao_var = tk.BooleanVar()
+    desativar_coleta_var = tk.BooleanVar()
+    tempo_coleta_var = tk.StringVar()
+    tempo_pausa_var = tk.StringVar()
+    kalima_var = tk.BooleanVar()
 
+    # Settings widgets are now outside the loop
     checkbox_frame = tk.Frame(container, bg=bg_color)
     checkbox_frame.pack(pady=5, fill="x", padx=25)
 
-    tk.Checkbutton(checkbox_frame, text="Des. Mouse Centro", variable=config["desativar_centralizacao"],
+    tk.Checkbutton(checkbox_frame, text="Des. Mouse Centro", variable=desativar_centralizacao_var,
                     bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
         .grid(row=0, column=1, sticky="w", padx=(0, 5))
 
-    tk.Checkbutton(checkbox_frame, text="Desativar Coleta", variable=config["desativar_coleta"],
+    tk.Checkbutton(checkbox_frame, text="Desativar Coleta", variable=desativar_coleta_var,
                     bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
         .grid(row=0, column=0, sticky="w", padx=(0, 5))
 
-    tk.Checkbutton(checkbox_frame, text="Kalima", variable=config["kalima"],
+    tk.Checkbutton(checkbox_frame, text="Kalima", variable=kalima_var,
                     bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
         .grid(row=1, column=1, sticky="w", padx=(0, 5))
 
-    tk.Checkbutton(checkbox_frame, text="Buff", variable=config["habilitado"],
+    tk.Checkbutton(checkbox_frame, text="Buff", variable=habilitado_var,
                     bg=bg_color, fg="white", selectcolor=bg_color, activebackground=bg_color, activeforeground="white")\
         .grid(row=1, column=0, sticky="w", padx=(0, 5))
 
@@ -1054,27 +1072,30 @@ def abrir_seletor_janelas():
     linha.pack(anchor="w", padx=25, pady=1)
 
     tk.Label(linha, text="Tempo (s):", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
-    tk.Entry(linha, textvariable=config["intervalo"], width=4,
+    tk.Entry(linha, textvariable=intervalo_var, width=4,
                 bg="#333333", fg="white", insertbackground="white").pack(side="left", padx=(5, 10))
 
     tk.Label(linha, text="Buff:", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
-    tk.Entry(linha, textvariable=config["tecla_buff"], width=2,
+    tk.Entry(linha, textvariable=tecla_buff_var, width=2,
                 bg="#333333", fg="white", insertbackground="white").pack(side="left", padx=5)
 
     tk.Label(linha, text="Atk:", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left")
-    tk.Entry(linha, textvariable=config["tecla_ataque"], width=2,
+    tk.Entry(linha, textvariable=tecla_ataque_var, width=2,
                 bg="#333333", fg="white", insertbackground="white").pack(side="left")
 
     linha_tempo = tk.Frame(container, bg=bg_color)
     linha_tempo.pack(anchor="w", padx=25)
 
     tk.Label(linha_tempo, text="Coletar (m):", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left", pady=(10, 0))
-    tk.Entry(linha_tempo, textvariable=config["tempo_coleta"], width=3,
+    tk.Entry(linha_tempo, textvariable=tempo_coleta_var, width=3,
                 bg="#333333", fg="white", insertbackground="white").pack(side="left", pady=(10, 0))
 
     tk.Label(linha_tempo, text="Pausa (m):", bg=bg_color, fg="white", font=("Arial", 9)).pack(side="left", pady=(10, 0))
-    tk.Entry(linha_tempo, textvariable=config["tempo_pausa"], width=3,
+    tk.Entry(linha_tempo, textvariable=tempo_pausa_var, width=3,
                 bg="#333333", fg="white", insertbackground="white").pack(side="left", pady=(10, 0))
+
+    # Load initial data for the selected window
+    option_changed(selected_window_var.get())
 
     separador = tk.Label(container, text="Itens para coletar:", bg=bg_color, fg="#D4AF37", font=("Arial", 10, "bold"))
     separador.pack(anchor="w", pady=(10, 0), padx=(10, 0))
@@ -1100,6 +1121,20 @@ def abrir_seletor_janelas():
             row += 1
 
     def on_salvar():
+        # Save the current UI settings to the selected window's config
+        selected = selected_window_var.get()
+        if selected in buff_config:
+            config = buff_config[selected]
+            config["habilitado"].set(habilitado_var.get())
+            config["intervalo"].set(intervalo_var.get())
+            config["tecla_buff"].set(tecla_buff_var.get())
+            config["tecla_ataque"].set(tecla_ataque_var.get())
+            config["desativar_centralizacao"].set(desativar_centralizacao_var.get())
+            config["desativar_coleta"].set(desativar_coleta_var.get())
+            config["tempo_coleta"].set(tempo_coleta_var.get())
+            config["tempo_pausa"].set(tempo_pausa_var.get())
+            config["kalima"].set(kalima_var.get())
+
         salvar_config()
         atualizar_indicadores()
         popup_config.destroy()
