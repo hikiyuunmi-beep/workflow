@@ -1051,6 +1051,8 @@ def abrir_seletor_janelas():
 
     # Settings widgets are now outside the loop
     checkbox_frame = tk.Frame(container, bg=bg_color)
+    checkbox_frame.columnconfigure(0, weight=1)
+    checkbox_frame.columnconfigure(1, weight=1)
     checkbox_frame.pack(pady=5, fill="x", padx=25)
 
     tk.Checkbutton(checkbox_frame, text="Des. Mouse Centro", variable=desativar_centralizacao_var,
