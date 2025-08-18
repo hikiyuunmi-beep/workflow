@@ -1102,6 +1102,8 @@ def abrir_seletor_janelas():
     separador.pack(anchor="w", pady=(10, 0), padx=(10, 0))
 
     frame_itens = tk.Frame(container, bg=bg_color)
+    frame_itens.columnconfigure(0, weight=1)
+    frame_itens.columnconfigure(1, weight=1)
     frame_itens.pack(pady=5)
 
     row = 0
