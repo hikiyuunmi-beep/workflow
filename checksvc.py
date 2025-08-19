@@ -164,174 +164,256 @@ deslocamentos_kalima = {
 
 def agrupar_itens_unicos():
     base_por_template = {
-        'zen_res800fhd': 'zen',
-        'zen_1024': 'zen',
-        'Jewels_res800fhd': 'jewels',
-        'Jewels_1024': 'jewels',
-        'gemstone_res800fhd': 'gemstone',
-        'gemstone_1024': 'gemstone',
-        'devils_key_res800fhd': 'devils',
-        'devils_key_res1024': 'devils',
-        'devils_eye_6_res800fhd': 'devils',
-        'devils_eye_6_1024': 'devils',
-        'complex_potion_res800fhd': 'complex',
-        'complex_potion_1024': 'complex',
-        'symbol_of_kundun_6_res800fhd': 'symbol',
-        'symbol_of_kundun_6_1024': 'symbol',
-        'symbol_of_kundun_7_800fhd': 'symbol',
-        'symbol_of_kundun_7_1024': 'symbol',
-        'sign_of_lord_res800fhd': 'sign',
-        'sign_of_lord_1024': 'sign',
-        'horn_of_uniria_1024': 'pets',
-        'red_chocolate_box_res1024': 'box',
-        'pink_chocolate_box_res1024': 'box',
-        'red_chocolate_box_res800fhd': 'box',
+        'zen_res800fhd': 'zen', 'zen_1024': 'zen', 'Jewels_res800fhd': 'jewels',
+        'Jewels_1024': 'jewels', 'gemstone_res800fhd': 'gemstone', 'gemstone_1024': 'gemstone',
+        'devils_key_res800fhd': 'devils', 'devils_key_res1024': 'devils',
+        'devils_eye_6_res800fhd': 'devils', 'devils_eye_6_1024': 'devils',
+        'complex_potion_res800fhd': 'complex', 'complex_potion_1024': 'complex',
+        'symbol_of_kundun_6_res800fhd': 'symbol', 'symbol_of_kundun_6_1024': 'symbol',
+        'symbol_of_kundun_7_800fhd': 'symbol', 'symbol_of_kundun_7_1024': 'symbol',
+        'sign_of_lord_res800fhd': 'sign', 'sign_of_lord_1024': 'sign',
+        'horn_of_uniria_1024': 'pets', 'red_chocolate_box_res1024': 'box',
+        'pink_chocolate_box_res1024': 'box', 'red_chocolate_box_res800fhd': 'box',
         'pink_chocolate_box_res800fhd': 'box',
-      }
-
+    }
     agrupados = {}
     for nome_template, base in base_por_template.items():
-        if base not in agrupados:
-            agrupados[base] = []
+        if base not in agrupados: agrupados[base] = []
         agrupados[base].append(nome_template)
     return agrupados
 
-def pressionar_tecla(hwnd, tecla_char):
-    try:
-        win32gui.SetForegroundWindow(hwnd)
-        time.sleep(0.05)
-    except Exception as e:
-        print(f"Failed to set foreground window: {e}")
+def make_lparam(x: int, y: int):
+    return y << 16 | x & 0xFFFF
 
-    if tecla_char:
+def find_window_titles_by_partial_title(partial_title):
+    titles = []
+    def enum_windows_callback(handle, _):
+        window_title = win32gui.GetWindowText(handle)
+        if partial_title in window_title:
+            titles.append(window_title)
+    win32gui.EnumWindows(enum_windows_callback, None)
+    return titles
+
+def find_window_handle_and_pid_by_partial_title(partial_titles):
+    hwnds = []
+    def enum_windows_callback(handle, _):
+        window_title = win32gui.GetWindowText(handle)
+        for title in partial_titles:
+            if title in window_title:
+                hwnds.append(handle)
+    win32gui.EnumWindows(enum_windows_callback, None)
+    return hwnds
+
+def capturar_tela(hwnd):
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    width, height = right - left, bottom - top
+    hwndDC = win32gui.GetWindowDC(hwnd)
+    mfcDC = win32ui.CreateDCFromHandle(hwndDC)
+    saveDC = mfcDC.CreateCompatibleDC()
+    bitmap = win32ui.CreateBitmap()
+    bitmap.CreateCompatibleBitmap(mfcDC, width, height)
+    saveDC.SelectObject(bitmap)
+    saveDC.BitBlt((0, 0), (width, height), mfcDC, (0, 0), win32con.SRCCOPY)
+    bmp_info = bitmap.GetInfo()
+    bmp_str = bitmap.GetBitmapBits(True)
+    img = np.frombuffer(bmp_str, dtype='uint8').reshape((bmp_info['bmHeight'], bmp_info['bmWidth'], 4))
+    win32gui.DeleteObject(bitmap.GetHandle())
+    saveDC.DeleteDC()
+    mfcDC.DeleteDC()
+    win32gui.ReleaseDC(hwnd, hwndDC)
+    return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+def left_click(hwnd, x, y, delay=0.07):
+    lParam = make_lparam(x, y)
+    win32gui.SendMessage(hwnd, WM_MOUSEMOVE, 0, lParam)
+    time.sleep(0.05)
+    win32gui.SendMessage(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lParam)
+    time.sleep(delay)
+    win32gui.SendMessage(hwnd, WM_LBUTTONUP, 0, lParam)
+    time.sleep(0.05)
+
+def localizar_item_na_tela(hwnd):
+    frame = capturar_tela(hwnd)
+    if frame is None: return None, None, None, None, None, False
+    height, width = frame.shape[:2]
+    margin_x, margin_y = int(width * MARGIN_PERCENT), int(height * MARGIN_PERCENT)
+    for nome, caminho in templates.items():
+        base_nome = next((base for base, nomes in base_templates.items() if nome in nomes), None)
+        if not base_nome or not itens_ativos.get(base_nome, True): continue
+        template = cv2.imread(caminho, cv2.IMREAD_COLOR)
+        if template is None: continue
+        result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        if max_val >= THRESHOLD:
+            item_x, item_y = max_loc
+            titulo_completo = win32gui.GetWindowText(hwnd)
+            titulo_parcial = next((n for n in buff_config if n in titulo_completo), None)
+            usar_kalima = buff_config.get(titulo_parcial, {}).get("kalima", False)
+            desloc_x, desloc_y = deslocamentos_kalima.get(nome) if usar_kalima else deslocamentos.get(nome, (5, 10))
+            pos_x, pos_y = item_x + desloc_x, item_y + desloc_y
+            if margin_x < pos_x < (width - margin_x) and margin_y < pos_y < (height - margin_y):
+                return (nome, pos_x, pos_y, item_x, item_y, usar_kalima)
+    return None, None, None, None, None, False
+
+def mover_mouse_para_centro(hwnd, offset_y=50, offset_x=7):
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    center_x_rel, center_y_rel = (right - left) // 2 - offset_x, (bottom - top) // 2 - offset_y
+    win32gui.SendMessage(hwnd, WM_MOUSEMOVE, 0, make_lparam(center_x_rel, center_y_rel))
+
+def rechecar_item(hwnd, nome, x, y, usar_kalima):
+    frame = capturar_tela(hwnd)
+    template = cv2.imread(templates[nome], cv2.IMREAD_COLOR)
+    if frame is None or template is None: return False
+    h, w = template.shape[:2]
+    desloc_x, desloc_y = deslocamentos_kalima.get(nome) if usar_kalima else deslocamentos.get(nome, (5, 10))
+    top_left_x, top_left_y = x - desloc_x, y - desloc_y
+    recorte = frame[max(0, top_left_y - 5):top_left_y + h + 5, max(0, top_left_x - 5):top_left_x + w + 5]
+    result = cv2.matchTemplate(recorte, template, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, _ = cv2.minMaxLoc(result)
+    return max_val >= THRESHOLD
+
+def monitorar_player(pm, addrs, titulo_parcial, comm):
+    ultimos_valores = {k: None for k in addrs if k != 'interface'}
+    ciclos_estaveis = 0
+    while bot_ativo:
         try:
-            interception.press(tecla_char)
+            valores_atuais = {nome: pm.read_int(addr) for nome, addr in addrs.items()}
+            config = buff_config.get(titulo_parcial, {})
+            safe_zone_value = 5 if config.get("habilitado", False) else 3
+
+            alterado = any(ultimos_valores[k] is not None and v != ultimos_valores[k] for k, v in valores_atuais.items() if k in ultimos_valores)
+            player_detectado = (valores_atuais.get('montaria', 0) != 0 or valores_atuais.get('interface', safe_zone_value) != safe_zone_value or alterado)
+
+            if player_detectado:
+                ciclos_estaveis = 0
+                if not zona_perigo.get(titulo_parcial):
+                    zona_perigo[titulo_parcial] = True
+                    comm.status_update.emit(f"{titulo_parcial}\nPLAYER DETECTADO!", "#aa5959")
+            elif ciclos_estaveis < 2:
+                ciclos_estaveis += 1
+            elif zona_perigo.get(titulo_parcial):
+                zona_perigo[titulo_parcial] = False
+                comm.status_update.emit(f"{titulo_parcial}\nZona segura", "#69aa59")
+
+            for k, v in valores_atuais.items():
+                if k in ultimos_valores: ultimos_valores[k] = v
         except Exception as e:
-            print(f"Failed to press key '{tecla_char}' using interception: {e}")
+            print(f"[ERRO] monitorar_player {titulo_parcial}: {e}")
+            comm.status_update.emit(f"Erro ao ler memória [{titulo_parcial}]", "red")
+        time.sleep(1)
 
-
-def mouse_dentro_jogo(hwnd):
+def iniciar_bot(main_window):
+    global bot_ativo, ultima_pos_bot, parar_por_movimento, tempo_parado, ultima_pos_mouse_real
+    if not bot_ativo: return
     try:
-        cursor_pos = win32gui.GetCursorPos()
-        janela_rect = win32gui.GetWindowRect(hwnd)
-        return janela_rect[0] <= cursor_pos[0] <= janela_rect[2] and janela_rect[1] <= cursor_pos[1] <= janela_rect[3]
-    except:
-        return False
-
-def monitorar_mouse(hwnd):
-    global ultima_pos_mouse_real, ultima_pos_bot, tempo_parado, parar_por_movimento
-
-    if mouse_dentro_jogo(hwnd):
-        atual = win32gui.GetCursorPos()
-
-        if atual != ultima_pos_mouse_real and atual != ultima_pos_bot:
-            ultima_pos_mouse_real = atual
-            tempo_parado = time.time()
-            if not parar_por_movimento:
-                parar_por_movimento = True
-        else:
-            if parar_por_movimento and time.time() - tempo_parado >= tempo_espera:
-                parar_por_movimento = False
-    else:
-        if parar_por_movimento:
-            parar_por_movimento = False
-
-def pressionar_direito(hwnd):
-    win32gui.SendMessage(hwnd, WM_RBUTTONDOWN, MK_RBUTTON, 0)
-
-def soltar_direito(hwnd):
-    win32gui.SendMessage(hwnd, WM_RBUTTONUP, 0, 0)
-    time.sleep(0.02)
-
-def carregar_config():
-    global MARGIN_PERCENT, itens_ativos, selected_window_var, buff_config
-
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            config = json.load(f)
-            MARGIN_PERCENT = config.get("margin_percent", 0.15)
-            itens_salvos = config.get("itens_ativos", [])
-            buffs_lidos = config.get("buffs", {})
-            selected_window_var = config.get("selected_window", "")
-    else:
-        MARGIN_PERCENT = 0.15
-        itens_salvos = []
-        buffs_lidos = {}
-        selected_window_var = ""
-
-    if not base_templates:
-        base_templates = agrupar_itens_unicos()
-
-    for nome_base in base_templates:
-        itens_ativos[nome_base] = nome_base in itens_salvos
-
-    for nome, dados in buffs_lidos.items():
-        buff_config[nome] = {
-            "habilitado": dados.get("habilitado", False),
-            "intervalo": str(dados.get("intervalo", 240)),
-            "tecla_buff": dados.get("tecla_buff", "2"),
-            "tecla_ataque": dados.get("tecla_ataque", "1"),
-            "desativar_centralizacao": dados.get("desativar_centralizacao", False),
-            "desativar_coleta": dados.get("desativar_coleta", False),
-            "tempo_coleta": str(dados.get("tempo_coleta", 60)),
-            "tempo_pausa": str(dados.get("tempo_pausa", 1)),
-            "kalima": dados.get("kalima", False)
-        }
-
-def salvar_config():
-    global MARGIN_PERCENT, selected_window_var, itens_ativos, buff_config
+        interception.auto_capture_devices(keyboard=True, mouse=False)
+    except Exception as e:
+        aviso_customizado(f"Falha ao iniciar driver de interceptação: {e}")
+        main_window.alternar_bot()
+        return
 
     selected_window = selected_window_var
     if not selected_window:
         aviso_customizado("Nenhuma janela foi selecionada.")
+        main_window.alternar_bot()
         return
 
-    itens_marcados = [nome for nome, var in itens_ativos.items() if var]
+    hwnds = find_window_handle_and_pid_by_partial_title([selected_window])
+    if not hwnds:
+        aviso_customizado(f"Janela '{selected_window}' não encontrada.")
+        main_window.alternar_bot()
+        return
 
-    buffs = {}
-    for nome, config_vars in buff_config.items():
-        buffs[nome] = {
-            "habilitado": config_vars["habilitado"],
-            "intervalo": int(config_vars["intervalo"] or 240),
-            "tecla_buff": config_vars["tecla_buff"],
-            "tecla_ataque": config_vars["tecla_ataque"],
-            "desativar_centralizacao": config_vars["desativar_centralizacao"],
-            "desativar_coleta": config_vars["desativar_coleta"],
-            "tempo_coleta": int(config_vars["tempo_coleta"] or 60),
-            "tempo_pausa": int(config_vars["tempo_pausa"] or 1),
-            "kalima": config_vars["kalima"]
-        }
+    hwnd = hwnds[0]
+    titulo_parcial = selected_window
+    coleta_pausa_timers = {}
 
-    config = {
-        "margin_percent": MARGIN_PERCENT,
-        "selected_window": selected_window,
-        "itens_ativos": itens_marcados,
-        "buffs": buffs
-    }
+    try:
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        pm = Pymem()
+        pm.open_process_from_id(pid)
+        base = pymem.process.module_from_name(pm.process_handle, "mucabrasil.exe").lpBaseOfDll
+        addrs = {"montaria": base + 0x4295CA4, "imp": base + 0x3BFED44, "interface": base + 0x42991F4, "elfa": base + 0x3BE56DC, "bk": base + 0x3BE5874, "mg": base + 0x3BE5940, "sm": base + 0x3BE57A8}
+        threading.Thread(target=monitorar_player, args=(pm, addrs, titulo_parcial, main_window.comm), daemon=True).start()
+    except Exception as e:
+        aviso_customizado(f"Falha ao ler a memória de '{titulo_parcial}': {e}")
+        main_window.alternar_bot()
+        return
 
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=4)
+    try:
+        while bot_ativo:
+            if selected_window_var != titulo_parcial: break
 
+            config = buff_config[titulo_parcial]
 
-def aviso_customizado(mensagem):
-    # This is a global function now, might need to pass parent window later
-    msg_box = QMessageBox()
-    msg_box.setIcon(QMessageBox.Warning)
-    msg_box.setText(mensagem)
-    msg_box.setWindowTitle("Aviso")
-    msg_box.setStandardButtons(QMessageBox.Ok)
-    msg_box.setStyleSheet("""
-        QMessageBox { background-color: #1A1A1A; border: 1px solid #D4AF37; }
-        QMessageBox QLabel { color: white; font-family: Arial; font-size: 12px; }
-        QMessageBox QPushButton {
-            background-color: #2a2a2a; color: #e0e0e0; border: 1px solid #4f9ddc;
-            padding: 5px; min-width: 70px;
-        }
-        QMessageBox QPushButton:hover { background-color: #3a3a3a; }
-        QMessageBox QPushButton:pressed { background-color: #4a4a4a; }
-    """)
-    msg_box.exec_()
+            if config.get("habilitado"):
+                try: intervalo = int(config["intervalo"])
+                except (ValueError, TypeError): intervalo = 240
+                if time.time() - buff_timers.get(titulo_parcial, 0) >= intervalo:
+                    try:
+                        win32gui.ShowWindow(hwnd, 9)
+                        win32gui.SetForegroundWindow(hwnd)
+                    except: pass
+                    pressionar_tecla(hwnd, config["tecla_buff"])
+                    time.sleep(0.1)
+                    pressionar_tecla(hwnd, config["tecla_ataque"])
+                    buff_timers[titulo_parcial] = time.time()
 
+            if mouse_dentro_jogo(hwnd):
+                if win32gui.GetCursorPos() != ultima_pos_mouse_real and win32gui.GetCursorPos() != ultima_pos_bot:
+                    ultima_pos_mouse_real = win32gui.GetCursorPos()
+                    tempo_parado = time.time()
+                    parar_por_movimento = True
+                elif parar_por_movimento and time.time() - tempo_parado >= tempo_espera:
+                    parar_por_movimento = False
+
+            if parar_por_movimento or config.get("desativar_coleta") or zona_perigo.get(titulo_parcial):
+                if not config.get("desativar_centralizacao"):
+                    mover_mouse_para_centro(hwnd)
+                    pressionar_direito(hwnd)
+                time.sleep(0.1)
+                continue
+
+            timer = coleta_pausa_timers.setdefault(titulo_parcial, {"inicio": time.time(), "em_pausa": False, "tempo_coleta": int(config.get("tempo_coleta", 60)) * 60, "tempo_pausa": int(config.get("tempo_pausa", 1)) * 60})
+            if not timer["em_pausa"]:
+                if time.time() - timer["inicio"] >= timer["tempo_coleta"]: timer.update({"em_pausa": True, "inicio": time.time()})
+            elif time.time() - timer["inicio"] >= timer["tempo_pausa"]:
+                timer.update({"em_pausa": False, "inicio": time.time()})
+
+            if timer["em_pausa"]:
+                if not config.get("desativar_centralizacao"):
+                    mover_mouse_para_centro(hwnd)
+                    pressionar_direito(hwnd)
+                time.sleep(0.1)
+                continue
+
+            nome, _, _, x_item, y_item, usar_kalima = localizar_item_na_tela(hwnd)
+            if nome:
+                time.sleep(0.3)
+                nome2, x2_click, y2_click, x2_item, y2_item, usar_kalima2 = localizar_item_na_tela(hwnd)
+                if nome2 == nome and abs(x2_item - x_item) <= 2 and abs(y2_item - y_item) <= 2:
+                    soltar_direito(hwnd)
+                    time.sleep(0.02)
+                    left_click(hwnd, x2_click, y2_click)
+                    ultima_pos_bot = (x2_click, y2_click)
+                    if rechecar_item(hwnd, nome, x2_click, y2_click, usar_kalima2):
+                        pressionar_direito(hwnd)
+                        time.sleep(3)
+                        if rechecar_item(hwnd, nome, x2_click, y2_click, usar_kalima2):
+                            left_click(hwnd, x2_click, y2_click)
+            elif not config.get("desativar_centralizacao"):
+                mover_mouse_para_centro(hwnd)
+                pressionar_direito(hwnd)
+
+            time.sleep(1 / 24)
+    except Exception as e:
+        print(f"[ERRO] Loop principal do bot: {e}")
+    finally:
+        print(f"[DEBUG] Encerrando o bot para {titulo_parcial}.")
+        if bot_ativo: main_window.alternar_bot()
+
+class Communicate(QObject):
+    status_update = pyqtSignal(str, str)
 
 class SettingsWindow(QDialog):
     def __init__(self, parent=None):
@@ -345,15 +427,11 @@ class SettingsWindow(QDialog):
     def init_ui(self):
         layout = QVBoxLayout(self)
         self.setLayout(layout)
-
-        # Window Selection
         layout.addWidget(QLabel("Selecione a janela:"))
         self.window_dropdown = QComboBox()
         self.populate_windows()
         self.window_dropdown.currentTextChanged.connect(self.load_window_settings)
         layout.addWidget(self.window_dropdown)
-
-        # Checkboxes
         checkbox_frame = QFrame()
         checkbox_layout = QGridLayout(checkbox_frame)
         self.chk_disable_collect = QCheckBox("Desativar Coleta")
@@ -365,8 +443,6 @@ class SettingsWindow(QDialog):
         checkbox_layout.addWidget(self.chk_buff, 1, 0)
         checkbox_layout.addWidget(self.chk_kalima, 1, 1)
         layout.addWidget(checkbox_frame)
-
-        # Buff settings
         buff_frame = QFrame()
         buff_layout = QHBoxLayout(buff_frame)
         buff_layout.addWidget(QLabel("Tempo (s):"))
@@ -383,8 +459,6 @@ class SettingsWindow(QDialog):
         buff_layout.addWidget(self.entry_attack_key)
         buff_layout.addStretch()
         layout.addWidget(buff_frame)
-
-        # Collect/Pause time
         time_frame = QFrame()
         time_layout = QHBoxLayout(time_frame)
         time_layout.addWidget(QLabel("Coletar (m):"))
@@ -397,8 +471,6 @@ class SettingsWindow(QDialog):
         time_layout.addWidget(self.entry_pause_time)
         time_layout.addStretch()
         layout.addWidget(time_frame)
-
-        # Item Selection
         layout.addWidget(QLabel("Itens para coletar:"))
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -406,26 +478,19 @@ class SettingsWindow(QDialog):
         self.item_layout = QGridLayout(item_widget)
         scroll_area.setWidget(item_widget)
         layout.addWidget(scroll_area)
-
         self.item_checkboxes = {}
         self.populate_items()
-
-        # Save Button
         self.save_button = QPushButton("Salvar")
         self.save_button.clicked.connect(self.save_and_close)
         layout.addWidget(self.save_button, alignment=Qt.AlignCenter)
-
         self.load_window_settings()
 
     def populate_windows(self):
-        janelas = find_window_titles_by_partial_title("MUCABRASIL")
-        self.shortened_titles = [t.split(' - ')[0] for t in janelas]
+        self.shortened_titles = [t.split(' - ')[0] for t in find_window_titles_by_partial_title("MUCABRASIL")]
         if not self.shortened_titles: return
-
         for title in self.shortened_titles:
             if title not in buff_config:
                 buff_config[title] = {"habilitado": False, "intervalo": "240", "tecla_buff": "2", "tecla_ataque": "1", "desativar_centralizacao": False, "desativar_coleta": False, "tempo_coleta": "60", "tempo_pausa": "1", "kalima": False}
-
         self.window_dropdown.addItems(self.shortened_titles)
         if selected_window_var and selected_window_var in self.shortened_titles:
             self.window_dropdown.setCurrentText(selected_window_var)
@@ -484,6 +549,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.config_window = None
+        self.comm = Communicate()
+        self.comm.status_update.connect(self.update_status_player)
         self.init_ui()
         self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self.atualizar_tempo)
