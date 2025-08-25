@@ -1,7 +1,8 @@
 import sys
 import requests
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox
 from main_window import MainWindow
+from register_dialog import RegisterDialog
 
 class LoginWindow(QWidget):
     def __init__(self):
@@ -13,7 +14,7 @@ class LoginWindow(QWidget):
 
     def initUI(self):
         self.setWindowTitle('Login do Sistema de Tarefas')
-        self.setGeometry(300, 300, 300, 150)
+        self.setGeometry(300, 300, 300, 200) # Adjusted height for new button
 
         layout = QVBoxLayout()
 
@@ -30,10 +31,19 @@ class LoginWindow(QWidget):
         layout.addWidget(self.pass_label)
         layout.addWidget(self.pass_input)
 
-        # Login Button
+        # Button Layout
+        button_layout = QHBoxLayout()
+        self.register_button = QPushButton('Registrar-se')
         self.login_button = QPushButton('Login')
+
+        button_layout.addWidget(self.register_button)
+        button_layout.addWidget(self.login_button)
+
+        layout.addLayout(button_layout)
+
+        # Button Connections
         self.login_button.clicked.connect(self.handle_login)
-        layout.addWidget(self.login_button)
+        self.register_button.clicked.connect(self.open_register_dialog)
 
         self.setLayout(layout)
 
@@ -59,6 +69,10 @@ class LoginWindow(QWidget):
 
         except requests.exceptions.ConnectionError:
             QMessageBox.critical(self, 'Erro de Conexão', 'Não foi possível conectar ao servidor. Verifique se o backend está rodando.')
+
+    def open_register_dialog(self):
+        dialog = RegisterDialog(self.base_url, self)
+        dialog.exec_()
 
     def open_main_window(self):
         # Pass the authenticated session to the main window
