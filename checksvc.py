@@ -14,12 +14,12 @@ import win32con
 import win32process
 from pymem import Pymem
 import pymem.process
+from tkinter import ttk
 
+VERSAO_ATUAL = "1.2.9-MG"
 
-VERSAO_ATUAL = "1.2.8-MG"
-
-# if __name__ == "__main__":
-#     exit()
+if __name__ == "__main__":
+    exit()
 
 base_templates = {}
 itens_ativos = {}
@@ -941,7 +941,7 @@ def abrir_seletor_janelas():
     popup_config.after(250, lambda: safe_set_icon(popup_config, icon_path))
 
     popup_config.title("Configurações")
-    popup_config.geometry("360x560")
+    popup_config.geometry("360x430")
     popup_config.resizable(False, True)
     popup_config.configure(fg_color="#1A1A1A")
 
@@ -957,7 +957,7 @@ def abrir_seletor_janelas():
     container = tk.Frame(popup_config, bg=bg_color)
     container.pack(fill="both", expand=True)
 
-    tk.Label(container, text="Janela:", bg=bg_color, fg="#D4AF37", font=("Arial", 10, "bold")).pack(anchor="w", pady=(10, 0), padx=10)
+    tk.Label(container, text="Selecione a janela:", bg=bg_color, fg="#D4AF37", font=("Arial", 10, "bold")).pack(anchor="w", pady=(10, 0), padx=110)
 
     config_frames = {}
 
@@ -1016,28 +1016,61 @@ def abrir_seletor_janelas():
     salvar_btn.pack_forget()
 
     def mostrar_config(nome):
+        # Esconde todos os componentes para garantir um estado limpo
         for fr in config_frames.values():
             fr.pack_forget()
+        itens_container.pack_forget()
+        salvar_btn.pack_forget()
+
+        # Mostra os componentes relevantes se uma janela for selecionada
         if nome:
             frame = config_frames.get(nome)
             if frame:
                 frame.pack(pady=5, fill="x", padx=25)
             itens_container.pack(fill="x")
             salvar_btn.pack(pady=10)
-        else:
-            itens_container.pack_forget()
-            salvar_btn.pack_forget()
 
-    def selecionar(value):
-        janela_var.set(value)
+    def selecionar(event=None):  # Parâmetro de evento para o bind
+        value = janela_var.get() # O textvariable é atualizado automaticamente
         mostrar_config(value)
 
-    combo = ctk.CTkComboBox(container, values=janelas, variable=janela_var, command=selecionar, width=200)
-    if janela_var.get():
-        combo.set(janela_var.get())
-    else:
-        combo.set("Selecione")
-        janela_var.set("")
+    # --- Estilização do ttk.Combobox ---
+    style = ttk.Style(popup_config)
+    style.theme_use('clam')
+    style.configure(
+        'Dark.TCombobox',  # Você pode dar o nome que quiser ao seu estilo
+        fieldbackground='#333333',  # Cor de fundo do campo de texto
+        background='#555555',       # Cor de fundo do botão da seta
+        foreground='white',         # Cor do texto no campo de texto
+        arrowcolor='white',         # Cor da seta
+        selectbackground='white',   # Cor de fundo do item selecionado na lista
+        selectforeground='black'    # Cor do texto do item selecionado na lista
+    )
+
+    #2a2a2a
+    # Estiliza a lista suspensa que aparece
+    popup_config.option_add('*TCombobox*Listbox.background', 'white')
+    popup_config.option_add('*TCombobox*Listbox.foreground', 'black')
+    popup_config.option_add('*TCombobox*Listbox.selectBackground', '#2a2a2a')
+    popup_config.option_add('*TCombobox*Listbox.selectForeground', 'white')
+
+    # --- Criação do ttk.Combobox ---
+    all_values = janelas
+    
+    combo = ttk.Combobox(
+        container,
+        textvariable=janela_var,
+        values=all_values,
+        style="Contrast.TCombobox",
+        width=35,
+        state= 'readonly'
+    )
+    combo.bind("<<ComboboxSelected>>", selecionar)
+
+    # Define o valor inicial
+    if janelas: # Verifica se a lista não está vazia
+        combo.set(janelas[0]) # Define o primeiro item da lista como padrão
+    
     combo.pack(padx=10, pady=(5, 10))
 
     for nome in janelas:
