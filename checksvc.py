@@ -1016,17 +1016,19 @@ def abrir_seletor_janelas():
     salvar_btn.pack_forget()
 
     def mostrar_config(nome):
+        # Esconde todos os componentes para garantir um estado limpo
         for fr in config_frames.values():
             fr.pack_forget()
+        itens_container.pack_forget()
+        salvar_btn.pack_forget()
+
+        # Mostra os componentes relevantes se uma janela for selecionada
         if nome:
             frame = config_frames.get(nome)
             if frame:
                 frame.pack(pady=5, fill="x", padx=25)
             itens_container.pack(fill="x")
             salvar_btn.pack(pady=10)
-        else:
-            itens_container.pack_forget()
-            salvar_btn.pack_forget()
 
     def selecionar(value):
         janela_var.set(value)
