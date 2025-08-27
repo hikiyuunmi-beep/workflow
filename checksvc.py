@@ -14,6 +14,7 @@ import win32con
 import win32process
 from pymem import Pymem
 import pymem.process
+from tkinter import ttk
 
 
 VERSAO_ATUAL = "1.2.8-MG"
@@ -941,9 +942,10 @@ def abrir_seletor_janelas():
     popup_config.after(250, lambda: safe_set_icon(popup_config, icon_path))
 
     popup_config.title("Configurações")
-    popup_config.geometry("360x560")
+    popup_config.geometry("360x450")
     popup_config.resizable(False, True)
     popup_config.configure(fg_color="#1A1A1A")
+    popup_config.resizable(False, False)
 
     root.update_idletasks()
     root_x = root.winfo_x()
@@ -957,7 +959,7 @@ def abrir_seletor_janelas():
     container = tk.Frame(popup_config, bg=bg_color)
     container.pack(fill="both", expand=True)
 
-    tk.Label(container, text="Janela:", bg=bg_color, fg="#D4AF37", font=("Arial", 10, "bold")).pack(anchor="w", pady=(10, 0), padx=10)
+    tk.Label(container, text="Selecione a janela:", bg=bg_color, fg="#D4AF37", font=("Arial", 10, "bold")).pack(anchor="w", pady=(10, 0), padx=110)
 
     config_frames = {}
 
@@ -1034,7 +1036,7 @@ def abrir_seletor_janelas():
         janela_var.set(value)
         mostrar_config(value)
 
-    combo = ctk.CTkComboBox(container, values=janelas, variable=janela_var, command=selecionar, width=200)
+    combo = ttk.Combobox(container, values=janelas, variable=janela_var, command=selecionar, width=200)
     if janela_var.get():
         combo.set(janela_var.get())
     else:
