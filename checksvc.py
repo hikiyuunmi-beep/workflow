@@ -15,6 +15,8 @@ import win32process
 from pymem import Pymem
 import pymem.process
 from tkinter import ttk
+import requests
+from datetime import datetime
 
 VERSAO_ATUAL = "1.2.9-MG"
 
@@ -188,6 +190,59 @@ def set_data_expiracao(data_str: str):
     except Exception:
         pass
 # ------------------------------------
+
+
+def obter_data_atual_servidor():
+    """Obtém a data atual a partir de um servidor confiável."""
+    try:
+        resp = requests.get(
+            "https://worldtimeapi.org/api/timezone/Etc/UTC", timeout=5
+        )
+        resp.raise_for_status()
+        data_str = resp.json().get("utc_datetime", "")[:10]
+        return datetime.strptime(data_str, "%Y-%m-%d").date()
+    except Exception as e:
+        print(f"Falha ao obter data do servidor: {e}")
+        return datetime.utcnow().date()
+
+
+def verificar_assinatura_expiracao(usuario: str | None = None):
+    """Verifica a expiração da assinatura e encerra a aplicação se estiver vencida."""
+    try:
+        resp = requests.get(
+            "https://raw.githubusercontent.com/araujorick/kb_credentials/main/dbcred_v1.json",
+            timeout=5,
+        )
+        resp.raise_for_status()
+        dados = resp.json()
+
+        registro = None
+        if isinstance(dados, list):
+            if usuario:
+                for item in dados:
+                    if item.get("usuario") == usuario:
+                        registro = item
+                        break
+            else:
+                registro = dados[0] if dados else {}
+        else:
+            registro = dados
+
+        expira_str = (registro.get("assinatura") or {}).get("expira", "")
+        if expira_str:
+            set_data_expiracao(expira_str)
+            expira_dt = datetime.strptime(expira_str, "%d-%m-%Y").date()
+            hoje = obter_data_atual_servidor()
+            if expira_dt < hoje:
+                aviso_customizado("Sua assinatura expirou!")
+                try:
+                    root.after(3000, root.destroy)
+                except Exception:
+                    pass
+                return False
+    except Exception as e:
+        print(f"Falha ao verificar assinatura: {e}")
+    return True
 
 
 def pressionar_tecla(hwnd, tecla_char):
@@ -1291,5 +1346,8 @@ if not data_exp_env:
 
 if data_exp_env:
     set_data_expiracao(data_exp_env)
+
+usuario_env = os.getenv("KB_USUARIO", "").strip()
+verificar_assinatura_expiracao(usuario_env or None)
 
 root.mainloop()
