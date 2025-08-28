@@ -245,6 +245,23 @@ def verificar_assinatura_expiracao(usuario: str | None = None):
     return True
 
 
+def agendar_verificacao_assinatura(usuario: str | None, intervalo_segundos: int = 3600):
+    """Agenda verificações periódicas da assinatura do usuário."""
+    intervalo_ms = max(30, intervalo_segundos) * 1000
+
+    def _checagem():
+        if verificar_assinatura_expiracao(usuario):
+            try:
+                root.after(intervalo_ms, _checagem)
+            except Exception:
+                pass
+
+    try:
+        root.after(intervalo_ms, _checagem)
+    except Exception:
+        pass
+
+
 def pressionar_tecla(hwnd, tecla_char):
     try:
         win32gui.SetForegroundWindow(hwnd)
@@ -1349,5 +1366,6 @@ if data_exp_env:
 
 usuario_env = os.getenv("KB_USUARIO", "").strip()
 verificar_assinatura_expiracao(usuario_env or None)
+agendar_verificacao_assinatura(usuario_env or None)
 
 root.mainloop()
